@@ -1,0 +1,36 @@
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+{$MCP_DOMAIN} {
+	@unauthorized expression `{http.request.header.Authorization} != "Bearer {$MCP_BEARER_TOKEN}"`
+	@bad_origin {
+		header Origin *
+		not header Origin https://{$MCP_DOMAIN}
+	}
+	@mcp path /mcp /mcp/*
+	@mcp_slash path /mcp/
+
+	route {
+		header -Server
+		header Cache-Control "no-store"
+		header @unauthorized WWW-Authenticate "Bearer realm=\"chronicle\""
+		respond @unauthorized "Unauthorized" 401
+		respond @bad_origin "Forbidden origin" 403
+		request_body {
+			max_size 10MB
+		}
+		# The pinned upstream serves /mcp; avoid its HTTP redirect for /mcp/.
+		rewrite @mcp_slash /mcp
+		reverse_proxy @mcp {$MCP_UPSTREAM:graphiti:8000} {
+			header_up -Authorization
+			# Public Host and Origin are checked above. The upstream MCP SDK
+			# only accepts localhost by default; keep this internal hop local.
+			header_up Host localhost:8000
+			header_up -Origin
+			flush_interval -1
+		}
+		respond "Not found" 404
+	}
+}

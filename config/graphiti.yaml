@@ -1,0 +1,27 @@
+server:
+  transport: http
+  host: 0.0.0.0
+  port: 8000
+llm:
+  provider: openai
+  model: ${MODEL_NAME:gpt-4.1-mini}
+  max_tokens: 4096
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+embedder:
+  provider: openai
+  model: ${EMBEDDER_MODEL:text-embedding-3-small}
+  dimensions: 1536
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+database:
+  provider: falkordb
+  providers:
+    falkordb:
+      uri: redis://falkordb:6379
+      database: main
+graphiti:
+  group_id: ${GRAPHITI_GROUP_ID:main}
+  user_id: chronicle

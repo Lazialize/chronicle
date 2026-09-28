@@ -1,0 +1,84 @@
+name: chronicle
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  caddy:
+    image: caddy:2-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      MCP_DOMAIN: ${MCP_DOMAIN:?Set MCP_DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env}
+      MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:?Set MCP_BEARER_TOKEN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge, app]
+    depends_on:
+      graphiti:
+        condition: service_healthy
+    logging: *logging
+
+  graphiti:
+    image: zepai/knowledge-graph-mcp:standalone@sha256:52d619bc3c45527dd5e6c5c413f3024f50d79fa672c81f4b384eb04bff85ca84
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
+      MODEL_NAME: ${MODEL_NAME:-gpt-4.1-mini}
+      EMBEDDER_MODEL: ${EMBEDDER_MODEL:-text-embedding-3-small}
+      GRAPHITI_GROUP_ID: ${GRAPHITI_GROUP_ID:-main}
+      SEMAPHORE_LIMIT: ${SEMAPHORE_LIMIT:-2}
+      GRAPHITI_TELEMETRY_ENABLED: "false"
+      CONFIG_PATH: /app/mcp/config/config.yaml
+    volumes:
+      - ./config/graphiti.yaml:/app/mcp/config/config.yaml:ro
+    networks: [app, database, outbound]
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:8000/health]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    stop_grace_period: 2m
+    logging: *logging
+
+  falkordb:
+    image: falkordb/falkordb:latest@sha256:13996aa523f0dd283f6bd6df6620b094dcea525452417c4d6ef9bef15dc9998d
+    restart: unless-stopped
+    environment:
+      BROWSER: "0"
+      REDIS_ARGS: "--appendonly yes --appendfsync everysec"
+    volumes:
+      - falkordb_data:/var/lib/falkordb/data
+    networks: [database]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+networks:
+  edge:
+  outbound:
+  app:
+    internal: true
+  database:
+    internal: true
+
+volumes:
+  caddy_data:
+  caddy_config:
+  falkordb_data:
+
